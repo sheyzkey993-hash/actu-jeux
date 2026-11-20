@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Actu jeux</title>
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root { --fond:#0f1115; --carte:#181b22; --bord:#262a33; --texte:#eceef2; --doux:#9aa1ad; --or:#f5b942; --vert:#5fd38d; }
+  * { box-sizing:border-box; }
+  html { color-scheme:dark; }
+  body { margin:0; background:var(--fond); color:var(--texte); font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         padding-bottom:calc(72px + env(safe-area-inset-bottom)); -webkit-tap-highlight-color:transparent; }
+  button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  a { color:inherit; text-decoration:none; }
+  .page { max-width:720px; margin:0 auto; padding:0 16px; }
+  header { display:flex; align-items:center; gap:12px; padding:calc(14px + env(safe-area-inset-top)) 0 10px; }
+  header h1 { font-size:22px; margin:0; flex:1; }
+  #maj { color:var(--doux); font-size:13px; }
+  #cloche { width:44px; height:44px; border-radius:50%; background:var(--carte); border:1px solid var(--bord); font-size:18px; }
+  #genres { display:flex; gap:8px; overflow-x:auto; padding:4px 16px 12px; margin:0 -16px; scrollbar-width:none; }
+  #genres::-webkit-scrollbar { display:none; }
+  .puce { flex:none; padding:10px 16px; border-radius:999px; background:var(--carte); border:1px solid var(--bord); color:var(--doux); }
+  .puce[aria-pressed=true] { background:var(--or); border-color:var(--or); color:#16130a; font-weight:600; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--doux); margin:22px 0 10px; }
+  .carte { display:flex; gap:12px; width:100%; text-align:left; background:var(--carte); border:1px solid var(--bord);
+           border-radius:16px; padding:10px; margin-bottom:10px; align-items:center; }
+  .carte img { width:112px; aspect-ratio:460/215; object-fit:cover; border-radius:10px; background:#0b0c10; flex:none; }
+  .carte .t { min-width:0; flex:1; }
+  .nom { font-weight:600; overflow-wrap:anywhere; }
+  .sous { color:var(--doux); font-size:14px; margin-top:2px; overflow-wrap:anywhere; }
+  .or { color:var(--or); } .vert { color:var(--vert); }
+  .badge { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; background:var(--or); color:#16130a; }
+  .vide { color:var(--doux); padding:8px 0 4px; }
+  #rubriques { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; background:rgba(15,17,21,.94);
+               backdrop-filter:blur(12px); border-top:1px solid var(--bord); padding-bottom:env(safe-area-inset-bottom); }
+  #rubriques button { flex:1; max-width:180px; padding:10px 2px 12px; color:var(--doux); font-size:12px; }
+  #rubriques button span { display:block; font-size:20px; margin-bottom:2px; }
+  #rubriques button[aria-pressed=true] { color:var(--or); }
+  .feuille { position:fixed; inset:0; background:var(--fond); overflow-y:auto; z-index:5; padding-bottom:calc(32px + env(safe-area-inset-bottom)); }
+  .retour { position:sticky; top:0; z-index:1; background:rgba(15,17,21,.94); backdrop-filter:blur(12px);
+            padding:calc(10px + env(safe-area-inset-top)) 0 10px; }
+  .retour button { padding:10px 16px 10px 12px; border-radius:999px; background:var(--carte); border:1px solid var(--bord); }
+  .affiche { width:100%; border-radius:16px; aspect-ratio:460/215; object-fit:cover; background:var(--carte); }
+  .fiche h1 { font-size:24px; margin:14px 0 6px; overflow-wrap:anywhere; }
+  .faits { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:14px 0; }
+  .fait { background:var(--carte); border:1px solid var(--bord); border-radius:14px; padding:10px 12px; min-width:0; }
+  .fait small { display:block; color:var(--doux); font-size:12px; }
+  .fait b { font-weight:600; overflow-wrap:anywhere; }
+  .boutons { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  .bouton { padding:12px 16px; border-radius:12px; background:var(--carte); border:1px solid var(--bord); font-weight:600; }
+  .bouton.plein { background:var(--or); border-color:var(--or); color:#16130a; }
+  video { width:100%; border-radius:14px; background:#000; aspect-ratio:16/9; margin-bottom:4px; }
+  textarea { width:100%; height:110px; background:var(--carte); color:var(--doux); border:1px solid var(--bord); border-radius:12px; padding:10px; font:12px monospace; }
+  :focus-visible { outline:2px solid var(--or); outline-offset:2px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Actu jeux</h1>
+    <span id="maj"></span>
+    <button id="cloche" aria-label="Notifications">🔔</button>
+  </header>
+  <nav id="genres" aria-label="Genres"></nav>
+  <main id="liste"><p class="vide">Chargement…</p></main>
+</div>
+<nav id="rubriques" aria-label="Rubriques"></nav>
+<div id="fiche" class="feuille" hidden></div>
+<div id="notifs" class="feuille" hidden></div>
+
+<script>
+// Clé publique des notifications (la clé privée, elle, reste dans les secrets GitHub).
+const CLE_PUBLIQUE = "BJ7YgQ1VwXvR47uxd9p1c6bX9iYUnAO8tZ9krfUWy_IMhT163U6yCqo39-KjvV7T_xmPFUhsUuHPiVPmheFjIhM";
+const RUBRIQUES = [["sorties", "📅", "Sorties"], ["pepites", "💎", "Pépites"], ["majs", "🛠️", "Mises à jour"], ["annonces", "📣", "Annonces"]];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const lien = u => /^https:\/\//.test(u || "") ? esc(u) : "#";
+const garde = (cle, defaut) => { try { return localStorage.getItem(cle) || defaut; } catch { return defaut; } };
+const note = (cle, v) => { try { localStorage.setItem(cle, v); } catch {} };
+let D = null, genre = garde("genre", "survie"), rubrique = garde("rubrique", "sorties");
+
+const jour = iso => new Date(iso + "T12:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const quand = j => j.iso ? jour(j.iso) : (j.date || "Date inconnue");
+function ilya(ts) {
+  const min = Math.round((Date.now() / 1000 - ts) / 60);
+  if (min < 60) return "il y a " + Math.max(min, 1) + " min";
+  if (min < 1440) return "il y a " + Math.round(min / 60) + " h";
+  if (min < 2880) return "hier";
+  return new Date(ts * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+const image = j => lien(j.image || j.vignette);
+const prix = j => j.prix ? `<span class="${j.remise ? "vert" : ""}">${esc(j.prix)}${j.remise ? " (" + esc(j.remise) + ")" : ""}</span>` : "";
+const avis = j => j.avis ? `<span class="or">${j.avis.pct} % positif</span>` : "";
+
+function carteJeu(id, extra) {
+  const j = D.jeux[id];
+  if (!j) return "";
+  const sous = extra ?? [quand(j), prix(j), avis(j)].filter(Boolean).join(" · ");
+  return `<a class="carte" href="#jeu/${esc(id)}"><img src="${image(j)}" alt="" loading="lazy">
+    <div class="t"><div class="nom">${esc(j.nom)}</div><div class="sous">${sous}</div></div></a>`;
+}
+const bloc = (titre, html, vide) => `<h2>${titre}</h2>` + (html || `<p class="vide">${vide}</p>`);
+const carteMaj = (m, avecJeu) => {
+  const j = D.jeux[m.jeu] || {};
+  return `<a class="carte" href="${avecJeu ? "#jeu/" + esc(m.jeu) : lien(m.url)}" ${avecJeu ? "" : 'target="_blank" rel="noopener"'}>
+    ${avecJeu ? `<img src="${image(j)}" alt="" loading="lazy">` : ""}
+    <div class="t"><div class="nom">${avecJeu ? esc(j.nom) : esc(m.titre)}</div>
+    <div class="sous">${avecJeu ? esc(m.titre) + " · " : ""}${ilya(m.date)} ${m.majeure ? '<span class="badge">Majeure</span>' : ""}</div></div></a>`;
+};
+const carteAnnonce = a => `<a class="carte" href="${lien(a.url)}" target="_blank" rel="noopener">
+    <div class="t"><div class="nom">${a.video ? "▶ " : ""}${esc(a.titre)}</div>
+    <div class="sous">${esc(a.source)} · ${ilya(a.date)}</div></div></a>`;
+
+function afficher() {
+  if (!D) return;
+  if (!D.genres.some(g => g.id === genre)) genre = D.genres[0].id;
+  const g = D.genres.find(x => x.id === genre);
+  $("maj").textContent = "Mis à jour " + ilya(D.maj);
+  $("genres").innerHTML = D.genres.map(x => `<button class="puce" data-genre="${esc(x.id)}" aria-pressed="${x.id === genre}">${esc(x.nom)}</button>`).join("");
+  $("rubriques").innerHTML = RUBRIQUES.map(([id, ico, nom]) => `<button data-rubrique="${id}" aria-pressed="${id === rubrique}"><span>${ico}</span>${nom}</button>`).join("");
+  const cartes = ids => ids.map(i => carteJeu(i)).join("");
+  let h = "";
+  if (rubrique === "sorties") {
+    h = bloc("À venir", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
+      + bloc("Sorties récentes (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
+  } else if (rubrique === "pepites") {
+    h = (g.coeurs.length ? bloc("Coups de cœur de Kouma", cartes(g.coeurs)) : "")
+      + bloc("Pépites du moment", cartes(g.pepites), "Aucune pépite trouvée.")
+      + bloc("Futures pépites (les plus attendues)", cartes(g.futures), "Rien pour l'instant.");
+  } else if (rubrique === "majs") {
+    h = bloc("Mises à jour importantes (30 jours)", g.majs.map(m => carteMaj(m, true)).join(""), "Aucune mise à jour importante ce mois-ci.");
+  } else {
+    h = bloc("Dans ce genre", D.annonces.filter(a => a.genres.includes(genre)).map(carteAnnonce).join(""), "Rien de repéré pour ce genre cette semaine.")
+      + bloc("Toutes les annonces", D.annonces.slice(0, 60).map(carteAnnonce).join(""), "Aucune annonce.");
+  }
+  $("liste").innerHTML = h;
+}
+
+function fiche(id) {
+  const j = D && D.jeux[id];
+  if (!j) { $("fiche").hidden = true; return; }
+  const steam = "https://store.steampowered.com/app/" + encodeURIComponent(id) + "/";
+  const youtube = "https://www.youtube.com/results?search_query=" + encodeURIComponent(j.nom + " trailer");
+  const nosGenres = D.genres.filter(g => ["a_venir", "recentes", "coeurs", "pepites", "futures"].some(c => g[c].includes(id)) || g.majs.some(m => m.jeu === id)).map(g => g.nom);
+  const fait = (nom, v) => v ? `<div class="fait"><small>${nom}</small><b>${v}</b></div>` : "";
+  const majs = [...new Map(D.genres.flatMap(g => g.majs).filter(m => m.jeu === id).map(m => [m.url, m])).values()];
+  const actus = D.annonces.filter(a => a.jeux.includes(id));
+  $("fiche").innerHTML = `<div class="page fiche">
+    <div class="retour"><button id="retour">‹ Retour</button></div>
+    <img class="affiche" src="${image(j)}" alt="">
+    <h1>${esc(j.nom)}</h1>
+    <div class="sous">${esc(j.resume || "")}</div>
+    <div class="faits">
+      ${fait("Prix", prix(j) || (j.a_venir ? "Pas encore annoncé" : ""))}
+      ${fait(j.a_venir ? "Sortie prévue" : "Date de sortie", esc(quand(j)))}
+      ${fait("Type de jeu", esc([...new Set([...nosGenres, ...(j.types || [])])].join(", ")))}
+      ${fait("Avis des joueurs", j.avis ? `${j.avis.pct} % positif<br><small>${esc(j.avis.texte)} · ${j.avis.n.toLocaleString("fr-FR")} avis en français</small>` : "")}
+      ${fait("Note presse (Metacritic)", j.metacritic ? esc(j.metacritic) + " / 100" : "")}
+      ${fait("Studio", esc(j.studio))}
+      ${fait("Éditeur", j.editeur !== j.studio ? esc(j.editeur) : "")}
+      ${fait("Jouable sur", esc((j.plateformes || []).join(", ")))}
+      ${fait("Modes", esc((j.modes || []).join(", ")))}
+    </div>
+    <div class="boutons">
+      <a class="bouton plein" href="${steam}" target="_blank" rel="noopener">Page Steam</a>
+      <a class="bouton" href="${youtube}" target="_blank" rel="noopener">Trailers sur YouTube</a>
+      ${/^https:\/\//.test(j.site || "") ? `<a class="bouton" href="${lien(j.site)}" target="_blank" rel="noopener">Site officiel</a>` : ""}
+    </div>
+    ${(j.trailers || []).filter(t => t.video).length ? "<h2>Trailers Steam</h2>" : ""}
+    ${(j.trailers || []).filter(t => t.video).map(t => `<div class="sous">${esc(t.nom)}</div>
+      <video controls playsinline preload="none" poster="${lien(t.image)}" src="${lien(t.video)}" data-steam="${steam}"></video>`).join("")}
+    ${majs.length ? "<h2>Mises à jour récentes</h2>" + majs.map(m => carteMaj(m, false)).join("") : ""}
+    ${actus.length ? "<h2>Articles et vidéos récents</h2>" + actus.map(carteAnnonce).join("") : ""}
+  </div>`;
+  $("fiche").hidden = false;
+  $("fiche").scrollTop = 0;
+  // si le téléphone ne sait pas lire la vidéo, on renvoie vers Steam
+  $("fiche").querySelectorAll("video").forEach(v => v.addEventListener("error", () => {
+    v.outerHTML = `<p class="vide">Vidéo illisible ici : <a class="or" href="${v.dataset.steam}" target="_blank" rel="noopener">la voir sur Steam</a>.</p>`;
+  }));
+}
+
+function route() {
+  const m = location.hash.match(/^#jeu\/(\d+)$/);
+  $("notifs").hidden = location.hash !== "#notifs";
+  if (m) fiche(m[1]); else { $("fiche").hidden = true; $("fiche").innerHTML = ""; }
+  document.body.style.overflow = m || location.hash === "#notifs" ? "hidden" : "";
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-genre],[data-rubrique],#retour,#cloche,#fermer-notifs");
+  if (!b) return;
+  if (b.dataset.genre) { genre = b.dataset.genre; note("genre", genre); afficher(); }
+  else if (b.dataset.rubrique) { rubrique = b.dataset.rubrique; note("rubrique", rubrique); afficher(); scrollTo(0, 0); }
+  else if (b.id === "cloche") { location.hash = "#notifs"; panneauNotifs(); }
+  else location.hash = "";
+});
+addEventListener("hashchange", route);
+
+async function charger() {
+  try {
+    D = await (await fetch("data.json", { cache: "no-store" })).json();
+    afficher(); route();
+  } catch {
+    if (!D) $("liste").innerHTML = '<p class="vide">Impossible de charger l\'actu. Vérifie ta connexion puis rouvre l\'appli.</p>';
+  }
+}
+charger();
+document.addEventListener("visibilitychange", () => { if (!document.hidden && D && Date.now() / 1000 - D.maj > 1800) charger(); });
+
+// ----- Notifications -----
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+const octets = b64 => Uint8Array.from(atob(b64.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+
+async function panneauNotifs(action) {
+  const page = t => $("notifs").innerHTML = `<div class="page"><div class="retour"><button id="fermer-notifs">‹ Retour</button></div><h1>Notifications</h1>${t}</div>`;
+  if (!("serviceWorker" in navigator && "PushManager" in window)) {
+    return page(`<p>Sur iPhone, les notifications ne marchent qu'une fois l'appli installée :</p>
+      <p class="sous">Dans Safari, touche le bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite l'appli depuis son icône et reviens ici.</p>`);
+  }
+  const reg = await navigator.serviceWorker.ready;
+  let abo = await reg.pushManager.getSubscription();
+  if (action === "activer" && !abo) {
+    if (await Notification.requestPermission() !== "granted")
+      return page('<p>Les notifications sont refusées sur ce téléphone. Autorise-les dans les réglages du téléphone pour cette appli, puis reviens ici.</p>');
+    try { abo = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: octets(CLE_PUBLIQUE) }); }
+    catch (e) { return page('<p>L\'activation a échoué : ' + esc(e.message) + "</p>"); }
+  }
+  if (!abo) return page(`<p>Reçois une notification quand un jeu sort ou reçoit une mise à jour majeure.</p>
+    <div class="boutons"><button class="bouton plein" id="activer">Activer sur ce téléphone</button></div>`);
+  const code = JSON.stringify(abo);
+  page(`<p>C'est activé sur ce téléphone. Dernière étape : envoie ce code à Tab, une seule fois. Il le range de son côté et les notifications arrivent.</p>
+    <textarea readonly>${esc(code)}</textarea>
+    <div class="boutons">${navigator.share ? '<button class="bouton plein" id="envoyer">Envoyer le code</button>' : ""}
+    <button class="bouton" id="copier">Copier le code</button></div><p class="sous" id="etat"></p>`);
+  $("copier").onclick = () => navigator.clipboard.writeText(code).then(() => $("etat").textContent = "Code copié.");
+  if ($("envoyer")) $("envoyer").onclick = () => navigator.share({ text: code }).catch(() => {});
+}
+document.addEventListener("click", e => { if (e.target.id === "activer") panneauNotifs("activer"); });
+if (location.hash === "#notifs") panneauNotifs();
+</script>
+</body>
+</html>

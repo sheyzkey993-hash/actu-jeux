@@ -1,0 +1,8 @@
+{
+  "_aide": "Les coups de cœur de Kouma, par genre. Colle l'adresse Steam du jeu (ou juste son numéro) entre guillemets, séparés par des virgules. Exemple : \"survie\": [\"https://store.steampowered.com/app/892970/Valheim/\", \"1203620\"]",
+  "survie": [],
+  "horreur": [],
+  "soulslike": [],
+  "mmo": [],
+  "coop": []
+}
