@@ -7,12 +7,16 @@ et de trois réglages donnés par GitHub :
   ADRESSE_SITE       l'adresse du site
 """
 import json, os, pathlib, sys
+from urllib.parse import unquote
 
 from pywebpush import WebPushException, webpush
 
 sys.stdout.reconfigure(encoding="utf-8")
 notifs = json.loads((pathlib.Path(__file__).parent / "a_envoyer.json").read_text("utf-8"))
-abonnes = [json.loads(l) for l in os.environ.get("ABONNES_NOTIFS", "").splitlines() if l.strip().startswith("{")]
+# unquote : certains téléphones abîment les accolades du code en le partageant (%7B, %7D)
+abonnes = [json.loads(unquote(l)) for l in os.environ.get("ABONNES_NOTIFS", "").splitlines() if l.strip().startswith("{")]
+if os.environ.get("NOTIF_ESSAI") == "true":   # case cochée dans « Run workflow »
+    notifs = [{"title": "Actu jeux", "body": "Les notifications marchent.", "url": "", "tag": "essai"}]
 print(f"{len(notifs)} notification(s), {len(abonnes)} téléphone(s)")
 
 for n, telephone in enumerate(abonnes, 1):

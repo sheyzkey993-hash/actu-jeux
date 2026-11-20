@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "7 * * * *"   # toutes les heures (GitHub peut avoir quelques minutes de retard)
   workflow_dispatch:       # bouton « Run workflow » pour lancer à la main
+    inputs:
+      essai:
+        description: "Envoyer une notification d'essai"
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -39,6 +44,7 @@ jobs:
           CLE_PRIVEE_NOTIFS: ${{ secrets.CLE_PRIVEE_NOTIFS }}
           ABONNES_NOTIFS: ${{ secrets.ABONNES_NOTIFS }}
           ADRESSE_SITE: ${{ steps.pages.outputs.base_url }}
+          NOTIF_ESSAI: ${{ inputs.essai }}
         if: env.CLE_PRIVEE_NOTIFS != '' && env.ABONNES_NOTIFS != ''
         run: pip install --quiet pywebpush && python notifs.py
       - uses: actions/upload-pages-artifact@v3
