@@ -37,7 +37,6 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Reprendre les données du passage d'avant
         run: |
-          echo "ADRESSE_SITE=https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
           curl -fsSL "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/data.json" -o site/data.json || echo "Pas de données d'avant"
           ls -l site/data.json || true
       - name: Ramasser l'actu

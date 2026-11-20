@@ -13,6 +13,7 @@
 <style>
   :root { --fond:#0f1115; --carte:#181b22; --bord:#262a33; --texte:#eceef2; --doux:#9aa1ad; --or:#f5b942; --vert:#5fd38d; }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   html { color-scheme:dark; }
   body { margin:0; background:var(--fond); color:var(--texte); font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
          padding-bottom:calc(72px + env(safe-area-inset-bottom)); -webkit-tap-highlight-color:transparent; }
@@ -23,6 +24,9 @@
   header h1 { font-size:22px; margin:0; flex:1; }
   #maj { color:var(--doux); font-size:13px; }
   #cloche { width:44px; height:44px; border-radius:50%; background:var(--carte); border:1px solid var(--bord); font-size:18px; }
+  #recherche { width:100%; font:inherit; color:var(--texte); background:var(--carte); border:1px solid var(--bord);
+               border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  #recherche::placeholder { color:var(--doux); }
   #genres { display:flex; gap:8px; overflow-x:auto; padding:4px 16px 12px; margin:0 -16px; scrollbar-width:none; }
   #genres::-webkit-scrollbar { display:none; }
   .puce { flex:none; padding:10px 16px; border-radius:999px; background:var(--carte); border:1px solid var(--bord); color:var(--doux); }
@@ -67,6 +71,7 @@
     <span id="maj"></span>
     <button id="cloche" aria-label="Notifications">🔔</button>
   </header>
+  <input id="recherche" type="search" placeholder="Chercher un jeu" aria-label="Chercher un jeu" autocomplete="off" enterkeyhint="search">
   <nav id="genres" aria-label="Genres"></nav>
   <main id="liste"><p class="vide">Chargement…</p></main>
 </div>
@@ -126,7 +131,14 @@ function afficher() {
   $("rubriques").innerHTML = RUBRIQUES.map(([id, ico, nom]) => `<button data-rubrique="${id}" aria-pressed="${id === rubrique}"><span>${ico}</span>${nom}</button>`).join("");
   const cartes = ids => ids.map(i => carteJeu(i)).join("");
   let h = "";
-  if (rubrique === "sorties") {
+  const q = simple($("recherche").value.trim());
+  $("genres").hidden = !!q;
+  if (q) {   // recherche : tous les jeux de l'appli, tous genres confondus
+    const trouves = Object.keys(D.jeux).filter(i => simple(D.jeux[i].nom).includes(q))
+      .sort((a, b) => D.jeux[a].nom.localeCompare(D.jeux[b].nom, "fr")).slice(0, 50);
+    h = bloc(trouves.length + (trouves.length > 1 ? " jeux trouvés" : " jeu trouvé"), cartes(trouves),
+      "Aucun jeu de ce nom dans l'appli. Elle ne connaît que les jeux de ses rubriques, pas tout le catalogue Steam.");
+  } else if (rubrique === "sorties") {
     h = bloc("À venir", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
       + bloc("Sorties récentes (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
   } else if (rubrique === "pepites") {
@@ -202,6 +214,9 @@ document.addEventListener("click", e => {
   else location.hash = "";
 });
 addEventListener("hashchange", route);
+// sans majuscules ni accents, pour que « pokemon » trouve « Pokémon »
+const simple = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+$("recherche").addEventListener("input", afficher);
 
 async function charger() {
   try {
