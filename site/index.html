@@ -235,14 +235,25 @@ async function panneauNotifs(action) {
   if (!abo) return page(`<p>Reçois une notification quand un jeu sort ou reçoit une mise à jour majeure.</p>
     <div class="boutons"><button class="bouton plein" id="activer">Activer sur ce téléphone</button></div>`);
   const code = JSON.stringify(abo);
+  // l'appli ne peut pas savoir si Tab a rangé le code : c'est le téléphone qui retient « c'est envoyé »
+  if (action === "envoye") note("code_envoye", abo.endpoint);
+  if (action === "revoir") note("code_envoye", "");
+  if (garde("code_envoye", "") === abo.endpoint)
+    return page(`<p><b class="or">Notifications activées</b> sur ce téléphone.</p>
+      <p class="sous">Tu seras prévenu quand un jeu sort ou reçoit une mise à jour majeure.</p>
+      <div class="boutons"><button class="bouton" data-notifs="revoir">Revoir le code</button></div>`);
   page(`<p>C'est activé sur ce téléphone. Dernière étape : envoie ce code à Tab, une seule fois. Il le range de son côté et les notifications arrivent.</p>
     <textarea readonly>${esc(code)}</textarea>
     <div class="boutons">${navigator.share ? '<button class="bouton plein" id="envoyer">Envoyer le code</button>' : ""}
-    <button class="bouton" id="copier">Copier le code</button></div><p class="sous" id="etat"></p>`);
+    <button class="bouton" id="copier">Copier le code</button>
+    <button class="bouton" data-notifs="envoye">C'est envoyé</button></div><p class="sous" id="etat"></p>`);
   $("copier").onclick = () => navigator.clipboard.writeText(code).then(() => $("etat").textContent = "Code copié.");
   if ($("envoyer")) $("envoyer").onclick = () => navigator.share({ text: code }).catch(() => {});
 }
-document.addEventListener("click", e => { if (e.target.id === "activer") panneauNotifs("activer"); });
+document.addEventListener("click", e => {
+  if (e.target.id === "activer") panneauNotifs("activer");
+  else if (e.target.dataset.notifs) panneauNotifs(e.target.dataset.notifs);
+});
 if (location.hash === "#notifs") panneauNotifs();
 </script>
 </body>

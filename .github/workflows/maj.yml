@@ -36,15 +36,18 @@ jobs:
       - id: pages
         uses: actions/configure-pages@v5
       - name: Reprendre les données du passage d'avant
-        run: curl -fsSL "${{ steps.pages.outputs.base_url }}/data.json" -o site/data.json || echo "Premier passage, pas de données d'avant"
+        run: |
+          echo "ADRESSE_SITE=https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+          curl -fsSL "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/data.json" -o site/data.json || echo "Pas de données d'avant"
+          ls -l site/data.json || true
       - name: Ramasser l'actu
         run: python ramasseur.py
       - name: Envoyer les notifications
         env:
           CLE_PRIVEE_NOTIFS: ${{ secrets.CLE_PRIVEE_NOTIFS }}
           ABONNES_NOTIFS: ${{ secrets.ABONNES_NOTIFS }}
-          ADRESSE_SITE: ${{ steps.pages.outputs.base_url }}
           NOTIF_ESSAI: ${{ inputs.essai }}
+        continue-on-error: true   # une panne des notifs ne doit pas bloquer la mise à jour du site
         if: env.CLE_PRIVEE_NOTIFS != '' && env.ABONNES_NOTIFS != ''
         run: pip install --quiet pywebpush && python notifs.py
       - uses: actions/upload-pages-artifact@v3

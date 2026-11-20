@@ -4,3 +4,6 @@ cle_privee_notifs.txt
 site/data.json
 a_envoyer.json
 __pycache__/
+pc/build/
+pc/dist/
+pc/icone.ico
