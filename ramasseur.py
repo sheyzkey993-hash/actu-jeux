@@ -8,7 +8,7 @@ Sources, toutes gratuites et sans clé : recherche Steam par tag, fiche Steam,
 événements Steam de chaque jeu, flux RSS de sites de jeux, flux de chaînes YouTube.
 Seule la bibliothèque standard de Python est utilisée.
 """
-import argparse, datetime as dt, html, json, pathlib, re, sys, time, urllib.error, urllib.request
+import argparse, datetime as dt, html, json, os, pathlib, re, sys, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 
@@ -66,6 +66,14 @@ SORTES = {"original": "Nouveau jeu", "port": "Portage", "full release": "Sortie 
 MOIS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 MOIS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 JOURS_CALENDRIER_PASSE = 14
+
+# IGDB (base de jeux de Twitch) : dates par plateforme, jaquettes, trailers. Gratuit pour un usage non commercial,
+# avec les deux codes d'une application Twitch (secrets IGDB_ID et IGDB_SECRET).
+IGDB_PLATEFORMES = {6: "PC", 167: "PS5", 169: "Xbox Series", 130: "Switch", 508: "Switch 2"}
+IGDB_GENRES = {"survie": ["survival"], "horreur": ["horror"], "soulslike": ["soulslike", "souls-like"],
+               "mmo": ["massively multiplayer", "mmo"], "coop": ["co-operative", "co-op"]}
+IGDB_ATTENTE_MIN = 2   # on ne garde que les jeux suivis par au moins 2 personnes sur IGDB, sinon des milliers de petits jeux
+IGDB_PAGES = 8         # 500 lignes par demande
 
 # Réglages
 JOURS_RECENT = 30        # « sortie récente » = sortie depuis moins de 30 jours
@@ -264,6 +272,87 @@ def lire_calendrier(wikitexte, annee):
     return sorties
 
 
+def cles_igdb():
+    """Les deux codes Twitch : secrets GitHub en ligne, fichier cles_igdb.txt sur le PC. Rien si absents."""
+    ident, secret = os.environ.get("IGDB_ID"), os.environ.get("IGDB_SECRET")
+    fichier = ICI / "cles_igdb.txt"
+    if not (ident and secret) and fichier.exists():
+        ident, secret = (fichier.read_text("utf-8").split() + ["", ""])[:2]
+    return (ident, secret) if ident and secret and not ident.startswith("COLLE_ICI") else None
+
+
+def poster(url, corps=b"", entetes=None):
+    req = urllib.request.Request(url, data=corps, headers={**UA, **(entetes or {})}, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def lire_igdb(lignes):
+    """Regroupe les lignes d'IGDB (une par jeu et par plateforme) en sorties. Ne garde que les jours précis."""
+    sorties = {}
+    for s in lignes:
+        g = s.get("game") or {}
+        if not g.get("name") or not re.match(r"[A-Z][a-z]{2} \d{2}, \d{4}$", s.get("human") or ""):
+            continue
+        iso = dt.datetime.fromtimestamp(s["date"], dt.timezone.utc).date().isoformat()
+        etiquettes = [x["name"].lower() for cle in ("genres", "themes", "game_modes", "keywords") for x in g.get(cle, [])]
+        c = sorties.setdefault((g["id"], iso), {
+            "titre": g["name"], "iso": iso, "plateformes": [], "sorte": "", "igdb": True,
+            "genre": ", ".join(x["name"] for cle in ("genres", "themes") for x in g.get(cle, [])[:2]),
+            "genres": [gid for gid, mots in IGDB_GENRES.items() if any(m == e or (m in e and len(e) < 40) for m in mots for e in etiquettes)],
+            "attente": g.get("hypes") or 0,
+            "image": f"https://images.igdb.com/igdb/image/upload/t_cover_big/{g['cover']['image_id']}.jpg" if g.get("cover") else None,
+            "video": (g.get("videos") or [{}])[-1].get("video_id"),
+        })
+        p = s.get("platform")   # un simple numéro, ou une fiche si la demande la détaille
+        nom = IGDB_PLATEFORMES.get(p.get("id") if isinstance(p, dict) else p)
+        if nom and nom not in c["plateformes"]:
+            c["plateformes"].append(nom)
+    return list(sorties.values())
+
+
+def igdb(maintenant):
+    """Sorties à venir sur PC et consoles d'après IGDB (base de jeux de Twitch). Liste vide sans les codes."""
+    cles = cles_igdb()
+    if not cles:
+        print("IGDB : pas de codes, source sautée")
+        return []
+    jeton = poster("https://id.twitch.tv/oauth2/token?" + urllib.parse.urlencode(
+        {"client_id": cles[0], "client_secret": cles[1], "grant_type": "client_credentials"}))["access_token"]
+    entetes = {"Client-ID": cles[0], "Authorization": "Bearer " + jeton, "Accept": "application/json"}
+    lignes = []
+    for page in range(IGDB_PAGES):
+        requete = ("fields date,human,platform,game.name,game.genres.name,game.themes.name,game.game_modes.name,"
+                   "game.keywords.name,game.cover.image_id,game.videos.video_id,game.hypes;"
+                   f" where date >= {maintenant - 86400} & date < {maintenant + 400 * 86400}"
+                   f" & platform = ({','.join(map(str, IGDB_PLATEFORMES))}) & game.hypes >= {IGDB_ATTENTE_MIN};"
+                   f" sort date asc; limit 500; offset {page * 500};")
+        recu = poster("https://api.igdb.com/v4/release_dates", requete.encode("utf-8"), entetes)
+        lignes += recu
+        if len(recu) < 500:
+            break
+        time.sleep(0.4)   # IGDB accepte 4 demandes par seconde
+    return lire_igdb(lignes)
+
+
+def fusionner(wiki, base):
+    """Réunit Wikipédia et IGDB : un jeu présent des deux côtés garde la fiche Wikipédia, enrichie par IGDB."""
+    simple = lambda s: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
+    par_titre = {}
+    for c in wiki:
+        par_titre.setdefault(simple(c["titre"]), []).append(c)
+    for b in base:
+        memes = par_titre.get(simple(b["titre"]))
+        if not memes:
+            wiki.append(b)
+            par_titre[simple(b["titre"])] = [b]
+            continue
+        for c in memes:
+            c.update({k: b[k] for k in ("attente", "image", "video")})
+            c["genres"] = list(dict.fromkeys(c["genres"] + b["genres"]))
+    return wiki
+
+
 def calendrier(aujourdhui, jeux, ancien, maintenant):
     sorties = []
     for annee in (aujourdhui.year, aujourdhui.year + 1):
@@ -272,17 +361,28 @@ def calendrier(aujourdhui, jeux, ancien, maintenant):
             sorties += lire_calendrier(page["parse"]["wikitext"]["*"], annee)
         except Exception as e:
             print(f"calendrier {annee} : ÉCHEC ({e!r})")
-    if not sorties:
-        return ancien.get("calendrier", [])   # Wikipédia en panne : on garde celui d'avant
+    try:
+        base = igdb(maintenant)
+        print(f"IGDB : {len(base)} sorties attendues")
+    except Exception as e:
+        base = []
+        print(f"IGDB : ÉCHEC ({e!r})")
+    if not sorties and not base:
+        return ancien.get("calendrier", [])   # tout est en panne : on garde le calendrier d'avant
+    sorties = fusionner(sorties, base)
     simple = lambda s: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
     steam = {simple(j["nom"]): i for i, j in jeux.items() if j.get("nom")}
-    deja = {(c["titre"], c["iso"]): c.get("vu", 0) for c in ancien.get("calendrier", [])}
+    avant = ancien.get("calendrier", [])
+    deja = {(c["titre"], c["iso"]): c.get("vu", 0) for c in avant}
+    igdb_deja_la = any(c.get("igdb") for c in avant)
     limite = (aujourdhui - dt.timedelta(days=JOURS_CALENDRIER_PASSE)).isoformat()
     garde = sorted((c for c in sorties if c["iso"] >= limite), key=lambda c: (c["iso"], c["titre"]))
     for c in garde:
         c["steam"] = steam.get(simple(c["titre"]))
-        # « vu » = quand cette date est apparue : sert à afficher et notifier les dates fraîchement annoncées
-        c["vu"] = deja.get((c["titre"], c["iso"]), maintenant if "calendrier" in ancien else 0)
+        # « vu » = quand cette date est apparue : sert à afficher et notifier les dates fraîchement annoncées.
+        # Au tout premier passage d'une source, rien n'est « nouveau » : sinon tout son contenu serait annoncé d'un coup.
+        connue = "calendrier" in ancien and (igdb_deja_la or not c.get("igdb"))
+        c["vu"] = deja.get((c["titre"], c["iso"]), maintenant if connue else 0)
     return garde
 
 
@@ -524,6 +624,18 @@ def verifie():
     n = nouveautes({"genres": [], "calendrier": []}, {"maj": 50, "genres": [], "jeux": {}, "calendrier": cal})
     assert n == [{"title": "Date annoncée : Neuf", "body": "12 mars 2027 · PS5, PC", "url": "", "tag": "date-Neuf"}], n
     assert nouveautes({"genres": []}, {"maj": 50, "genres": [], "jeux": {}, "calendrier": cal}) == []
+    jeu = {"id": 9, "name": "Jeu Deux", "hypes": 12, "themes": [{"name": "Horror"}], "game_modes": [{"name": "Co-operative"}],
+           "cover": {"image_id": "co1"}, "videos": [{"video_id": "abc"}]}
+    base = lire_igdb([{"date": 1797465600, "human": "Dec 17, 2026", "platform": {"id": 167}, "game": jeu},
+                      {"date": 1797465600, "human": "Dec 17, 2026", "platform": 6, "game": jeu},
+                      {"date": 1797465600, "human": "Q4 2026", "platform": {"id": 6}, "game": {"id": 8, "name": "Flou"}},
+                      {"date": 1797552000, "human": "Dec 18, 2026", "platform": {"id": 508}, "game": {"id": 7, "name": "Seul", "hypes": 3}}])
+    assert [(b["titre"], b["iso"], b["plateformes"]) for b in base] == [("Jeu Deux", "2026-12-17", ["PS5", "PC"]), ("Seul", "2026-12-18", ["Switch 2"])], base
+    assert base[0]["genres"] == ["horreur", "coop"] and base[0]["video"] == "abc" and base[0]["image"].endswith("t_cover_big/co1.jpg")
+    f = fusionner(lire_calendrier(wiki, 2026), base)
+    deux = next(x for x in f if x["titre"] == "Jeu Deux")
+    assert len(f) == 5 and deux["genres"] == ["soulslike", "horreur", "coop"] and deux["attente"] == 12 and "igdb" not in deux
+    assert deux["plateformes"] == ["PC"] and f[-1]["titre"] == "Seul" and f[-1]["igdb"]
     print("Vérification : tout est bon.")
 
 

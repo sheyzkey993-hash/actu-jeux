@@ -40,6 +40,9 @@ jobs:
           curl -fsSL "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/data.json" -o site/data.json || echo "Pas de données d'avant"
           ls -l site/data.json || true
       - name: Ramasser l'actu
+        env:
+          IGDB_ID: ${{ secrets.IGDB_ID }}
+          IGDB_SECRET: ${{ secrets.IGDB_SECRET }}
         run: python ramasseur.py
       - name: Envoyer les notifications
         env:

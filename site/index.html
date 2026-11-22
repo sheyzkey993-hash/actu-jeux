@@ -35,6 +35,7 @@
   .carte { display:flex; gap:12px; width:100%; text-align:left; background:var(--carte); border:1px solid var(--bord);
            border-radius:16px; padding:10px; margin-bottom:10px; align-items:center; }
   .carte img { width:112px; aspect-ratio:460/215; object-fit:cover; border-radius:10px; background:#0b0c10; flex:none; }
+  .carte img.jaquette { width:62px; aspect-ratio:3/4; }   /* jaquettes de jeux console, en hauteur */
   .carte .t { min-width:0; flex:1; }
   .nom { font-weight:600; overflow-wrap:anywhere; }
   .sous { color:var(--doux); font-size:14px; margin-top:2px; overflow-wrap:anywhere; }
@@ -121,11 +122,14 @@ function carteJeu(id, extra) {
 // une sortie du calendrier (PC et consoles) : ouvre la fiche si le jeu est sur Steam, sinon ses trailers sur YouTube
 function carteCal(c) {
   const j = c.steam && D.jeux[c.steam];
-  const cible = j ? `href="#jeu/${esc(c.steam)}"` : `href="https://www.youtube.com/results?search_query=${encodeURIComponent(c.titre + " trailer")}" target="_blank" rel="noopener"`;
-  return `<a class="carte" ${cible}>${j ? `<img src="${image(j)}" alt="" loading="lazy">` : ""}
+  const youtube = /^[\w-]{6,20}$/.test(c.video || "") ? "https://www.youtube.com/watch?v=" + c.video
+    : "https://www.youtube.com/results?search_query=" + encodeURIComponent(c.titre + " trailer");
+  const cible = j ? `href="#jeu/${esc(c.steam)}"` : `href="${youtube}" target="_blank" rel="noopener"`;
+  const vignette = j ? image(j) : lien(c.image);
+  return `<a class="carte" ${cible}>${vignette !== "#" ? `<img class="${j ? "" : "jaquette"}" src="${vignette}" alt="" loading="lazy">` : ""}
     <div class="t"><div class="nom">${esc(c.titre)}</div>
     <div class="sous"><span class="or">${jour(c.iso)}</span> · ${esc(c.plateformes.join(", "))}</div>
-    <div class="sous">${esc([c.sorte, c.genre].filter(Boolean).join(" · "))}${j ? "" : " · trailers ↗"}</div></div></a>`;
+    <div class="sous">${esc([c.sorte, c.genre].filter(Boolean).join(" · "))}${j ? "" : (c.video ? " · trailer ↗" : " · trailers ↗")}</div></div></a>`;
 }
 const depliant = (titre, html) => `<details><summary>${titre}</summary>${html}</details>`;
 const bloc = (titre, html, vide) => `<h2>${titre}</h2>` + (html || `<p class="vide">${vide}</p>`);
@@ -161,7 +165,7 @@ function afficher() {
       "Aucun jeu de ce nom dans l'appli. Elle ne connaît que les jeux de ses rubriques, pas tout le catalogue Steam.");
   } else if (rubrique === "sorties") {
     h = bloc("Calendrier · PC et consoles", cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
-      + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a>, licence CC BY-SA.</p>`
+      + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a> (licence CC BY-SA) et <a href="https://www.igdb.com" target="_blank" rel="noopener">IGDB</a>.</p>`
       + depliant(`Tout le calendrier, tous genres (${cal.length})`, cal.map(carteCal).join(""))
       + bloc("À venir sur Steam", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
       + bloc("Sorties récentes sur Steam (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
