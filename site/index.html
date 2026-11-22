@@ -200,7 +200,10 @@ function afficher() {
     h = bloc("À venir sur Steam", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
       + bloc("Sorties récentes sur Steam (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
   } else if (rubrique === "calendrier") {
-    h = bloc("Calendrier · PC et consoles",cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
+    // les plus attendus : classés par le nombre de personnes qui suivent le jeu sur IGDB
+    const attendus = cal.filter(c => c.genres.includes(genre) && c.attente > 0).sort((a, b) => b.attente - a.attente).slice(0, 30);
+    h = (attendus.length ? depliant(`Les plus attendus du genre (${attendus.length})`, attendus.map(carteCal).join("")) : "")
+      + bloc("Calendrier · PC et consoles", cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
       + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a> (licence CC BY-SA) et <a href="https://www.igdb.com" target="_blank" rel="noopener">IGDB</a>.</p>`
       + depliant(`Tout le calendrier, tous genres (${cal.length})`, cal.map(carteCal).join(""));
   } else if (rubrique === "pepites") {

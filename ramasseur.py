@@ -82,6 +82,7 @@ PEPITE_PCT, PEPITE_AVIS = 85, 100   # …avec au moins 85 % d'avis positifs sur 
 JOURS_MAJ = 30           # mises à jour des 30 derniers jours
 JOURS_ANNONCE = 7
 JEUX_SUIVIS = 25         # mises à jour suivies pour les 25 meilleures ventes du genre
+NB_ATTENDUS = 50         # « futures pépites » : les 50 jeux à venir les plus mis en liste de souhaits sur Steam, par genre
 FICHES_PAR_PASSAGE = 150  # Steam bride vers 200 fiches / 5 min : on en prend 150, le reste au passage suivant
 AGE_FICHE = 24 * 3600
 NOTIFS_MAX = 6
@@ -471,7 +472,7 @@ def ranger_annonces(annonces, genres, jeux):
 def ramasser_genre(gid, coeurs, jeux, aujourdhui):
     g = GENRES[gid]
     ventes = recherche(g["tag"], "filter=topsellers", 100)
-    attendus = recherche(g["tag"], "filter=popularwishlist", 15)
+    attendus = recherche(g["tag"], "filter=popularwishlist", NB_ATTENDUS)
     bientot = recherche(g["tag"], "filter=popularcomingsoon", 50)
     for j in bientot + attendus + ventes:   # les meilleures ventes en dernier : leurs infos priment
         jeux.setdefault(j["id"], {}).update({k: v for k, v in j.items() if v is not None})
