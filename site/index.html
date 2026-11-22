@@ -41,6 +41,14 @@
   .or { color:var(--or); } .vert { color:var(--vert); }
   .badge { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; background:var(--or); color:#16130a; }
   .vide { color:var(--doux); padding:8px 0 4px; }
+  .credit { color:var(--doux); font-size:12px; margin:2px 0 12px; }
+  .credit a { text-decoration:underline; }
+  details { margin:6px 0 4px; }
+  summary { cursor:pointer; list-style:none; padding:12px 16px; border-radius:12px; background:var(--carte); border:1px solid var(--bord);
+            font-weight:600; margin-bottom:10px; }
+  summary::-webkit-details-marker { display:none; }
+  summary::after { content:" ▾"; color:var(--doux); }
+  details[open] summary::after { content:" ▴"; }
   #rubriques { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; background:rgba(15,17,21,.94);
                backdrop-filter:blur(12px); border-top:1px solid var(--bord); padding-bottom:env(safe-area-inset-bottom); }
   #rubriques button { flex:1; max-width:180px; padding:10px 2px 12px; color:var(--doux); font-size:12px; }
@@ -110,6 +118,16 @@ function carteJeu(id, extra) {
   return `<a class="carte" href="#jeu/${esc(id)}"><img src="${image(j)}" alt="" loading="lazy">
     <div class="t"><div class="nom">${esc(j.nom)}</div><div class="sous">${sous}</div></div></a>`;
 }
+// une sortie du calendrier (PC et consoles) : ouvre la fiche si le jeu est sur Steam, sinon ses trailers sur YouTube
+function carteCal(c) {
+  const j = c.steam && D.jeux[c.steam];
+  const cible = j ? `href="#jeu/${esc(c.steam)}"` : `href="https://www.youtube.com/results?search_query=${encodeURIComponent(c.titre + " trailer")}" target="_blank" rel="noopener"`;
+  return `<a class="carte" ${cible}>${j ? `<img src="${image(j)}" alt="" loading="lazy">` : ""}
+    <div class="t"><div class="nom">${esc(c.titre)}</div>
+    <div class="sous"><span class="or">${jour(c.iso)}</span> · ${esc(c.plateformes.join(", "))}</div>
+    <div class="sous">${esc([c.sorte, c.genre].filter(Boolean).join(" · "))}${j ? "" : " · trailers ↗"}</div></div></a>`;
+}
+const depliant = (titre, html) => `<details><summary>${titre}</summary>${html}</details>`;
 const bloc = (titre, html, vide) => `<h2>${titre}</h2>` + (html || `<p class="vide">${vide}</p>`);
 const carteMaj = (m, avecJeu) => {
   const j = D.jeux[m.jeu] || {};
@@ -131,16 +149,22 @@ function afficher() {
   $("rubriques").innerHTML = RUBRIQUES.map(([id, ico, nom]) => `<button data-rubrique="${id}" aria-pressed="${id === rubrique}"><span>${ico}</span>${nom}</button>`).join("");
   const cartes = ids => ids.map(i => carteJeu(i)).join("");
   let h = "";
+  const aujourdhui = new Date().toLocaleDateString("sv");   // date du jour au format 2026-11-22
+  const cal = (D.calendrier || []).filter(c => c.iso >= aujourdhui);
   const q = simple($("recherche").value.trim());
   $("genres").hidden = !!q;
   if (q) {   // recherche : tous les jeux de l'appli, tous genres confondus
     const trouves = Object.keys(D.jeux).filter(i => simple(D.jeux[i].nom).includes(q))
       .sort((a, b) => D.jeux[a].nom.localeCompare(D.jeux[b].nom, "fr")).slice(0, 50);
-    h = bloc(trouves.length + (trouves.length > 1 ? " jeux trouvés" : " jeu trouvé"), cartes(trouves),
+    const consoles = cal.filter(c => !c.steam && simple(c.titre).includes(q)).slice(0, 30);   // jeux du calendrier absents de Steam
+    h = bloc(trouves.length + consoles.length + (trouves.length + consoles.length > 1 ? " jeux trouvés" : " jeu trouvé"), cartes(trouves) + consoles.map(carteCal).join(""),
       "Aucun jeu de ce nom dans l'appli. Elle ne connaît que les jeux de ses rubriques, pas tout le catalogue Steam.");
   } else if (rubrique === "sorties") {
-    h = bloc("À venir", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
-      + bloc("Sorties récentes (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
+    h = bloc("Calendrier · PC et consoles", cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
+      + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a>, licence CC BY-SA.</p>`
+      + depliant(`Tout le calendrier, tous genres (${cal.length})`, cal.map(carteCal).join(""))
+      + bloc("À venir sur Steam", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
+      + bloc("Sorties récentes sur Steam (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
   } else if (rubrique === "pepites") {
     h = (g.coeurs.length ? bloc("Coups de cœur de Kouma", cartes(g.coeurs)) : "")
       + bloc("Pépites du moment", cartes(g.pepites), "Aucune pépite trouvée.")
@@ -148,7 +172,10 @@ function afficher() {
   } else if (rubrique === "majs") {
     h = bloc("Mises à jour importantes (30 jours)", g.majs.map(m => carteMaj(m, true)).join(""), "Aucune mise à jour importante ce mois-ci.");
   } else {
-    h = bloc("Dans ce genre", D.annonces.filter(a => a.genres.includes(genre)).map(carteAnnonce).join(""), "Rien de repéré pour ce genre cette semaine.")
+    const fraiches = (D.calendrier || []).filter(c => c.vu > D.maj - 7 * 86400).sort((a, b) => b.vu - a.vu);
+    h = bloc("Dates de sortie annoncées cette semaine", fraiches.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune nouvelle date dans ce genre cette semaine.")
+      + (fraiches.length ? depliant(`Toutes les nouvelles dates, tous genres (${fraiches.length})`, fraiches.map(carteCal).join("")) : "")
+      + bloc("Dans ce genre", D.annonces.filter(a => a.genres.includes(genre)).map(carteAnnonce).join(""), "Rien de repéré pour ce genre cette semaine.")
       + bloc("Toutes les annonces", D.annonces.slice(0, 60).map(carteAnnonce).join(""), "Aucune annonce.");
   }
   $("liste").innerHTML = h;

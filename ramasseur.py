@@ -28,15 +28,44 @@ GENRES = {
     "coop":      {"nom": "Coop",      "tag": 3843,  "mots": ["coop", "co-op", "coopération"]},
 }
 
+YT = "https://www.youtube.com/feeds/videos.xml?channel_id="
 FLUX = [  # (nom affiché, adresse, vidéo ?)
     ("Gamekult", "https://www.gamekult.com/feed.xml", False),
     ("Jeuxvideo.com", "https://www.jeuxvideo.com/rss/rss.xml", False),
     ("ActuGaming", "https://www.actugaming.net/feed/", False),
     ("Gematsu", "https://www.gematsu.com/feed", False),
     ("PC Gamer", "https://www.pcgamer.com/rss/", False),
-    ("YouTube · IGN", "https://www.youtube.com/feeds/videos.xml?channel_id=UCKy1dAqELo0zrOtPkf0eTMw", True),
-    ("YouTube · GameTrailers", "https://www.youtube.com/feeds/videos.xml?channel_id=UCJx5KP-pCUmL9eZUv-mIcNw", True),
+    ("IGN France", "https://fr.ign.com/feed.xml", False),
+    ("Gameblog", "https://www.gameblog.fr/rssmap/rss_all.xml", False),
+    ("Xbox Wire", "https://news.xbox.com/fr-fr/feed/", False),
+    ("PlayStation Blog", "https://blog.playstation.com/feed/", False),
+    ("Steam", "https://store.steampowered.com/feeds/news/collection/steam/", False),
+    ("Eurogamer", "https://www.eurogamer.net/feed", False),
+    ("VGC", "https://www.videogameschronicle.com/feed/", False),
+    ("Rock Paper Shotgun", "https://www.rockpapershotgun.com/feed", False),
+    ("GamesRadar", "https://www.gamesradar.com/rss/", False),
+    ("Nintendo Life", "https://www.nintendolife.com/feeds/latest", False),
+    ("Push Square", "https://www.pushsquare.com/feeds/latest", False),
+    ("Pure Xbox", "https://www.purexbox.com/feeds/latest", False),
+    ("YouTube · IGN", YT + "UCKy1dAqELo0zrOtPkf0eTMw", True),
+    ("YouTube · GameTrailers", YT + "UCJx5KP-pCUmL9eZUv-mIcNw", True),
+    ("YouTube · GameSpot Trailers", YT + "UCUnRn1f78foyP26XGkRfWsA", True),
+    ("YouTube · PlayStation", YT + "UC-2Y8dQb0S6DtpxNgAKoJKA", True),
+    ("YouTube · Xbox", YT + "UCjBp_7RuDBUYbd1LegWEJ8g", True),
+    ("YouTube · Nintendo", YT + "UCGIY_O-8vW4rfX98KlMkvRg", True),
 ]
+
+# Calendrier des sorties PC et consoles : listes tenues à jour sur Wikipédia (accès officiel, licence CC BY-SA)
+WIKI = "https://en.wikipedia.org/w/api.php?action=parse&format=json&prop=wikitext&redirects=1&page="
+WIKI_GENRES = {"survie": ["survival"], "horreur": ["horror"], "soulslike": ["soulslike", "souls-like"],
+               "mmo": ["mmo"], "coop": ["co-op", "cooperative"]}
+PLATEFORMES = {"WIN": "PC", "OSX": "Mac", "LIN": "Linux", "NS": "Switch", "NS2": "Switch 2", "PS4": "PS4", "PS5": "PS5",
+               "XBO": "Xbox One", "XBX/S": "Xbox Series", "XSX/S": "Xbox Series", "IOS": "iOS", "DROID": "Android"}
+SORTES = {"original": "Nouveau jeu", "port": "Portage", "full release": "Sortie complète", "early access": "Accès anticipé",
+          "expansion": "Extension", "compilation": "Compilation"}
+MOIS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+MOIS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+JOURS_CALENDRIER_PASSE = 14
 
 # Réglages
 JOURS_RECENT = 30        # « sortie récente » = sortie depuis moins de 30 jours
@@ -189,6 +218,79 @@ def lire_flux(source, url, video, depuis):
     return articles
 
 
+def texte_wiki(t):
+    t = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", t, flags=re.S)
+    t = re.sub(r"\{\{(?:efn|small)[^{}]*\}\}", "", t)
+    t = re.sub(r"\{\{sort\|[^|{}]*\|([^{}]*)\}\}", r"\1", t)   # {{sort|clé de tri|titre affiché}} -> titre affiché
+    t = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", t)   # [[lien|texte]] -> texte
+    return re.sub(r"'{2,}", "", t).strip()
+
+
+def lire_calendrier(wikitexte, annee):
+    """Lit les tableaux « date, titre, plateformes, type, genre » d'une liste Wikipédia. Ne garde que les jours précis."""
+    sorties, reports = [], {}
+    for ligne in wikitexte.split("\n|-"):
+        if "{|" in ligne:
+            reports = {}    # nouveau tableau
+        brutes, cases, col = re.split(r"\n\|(?!\})", ligne)[1:], [], 0
+        while brutes or col in reports:
+            if col in reports:   # case fusionnée sur plusieurs lignes : on reprend celle du dessus
+                cases.append(reports[col][0])
+                reports[col][1] -= 1
+                if not reports[col][1]:
+                    del reports[col]
+            else:
+                brute = brutes.pop(0)
+                attributs = re.match(r'\s*((?:[\w-]+="[^"]*"\s*)+)\|(?!\|)', brute)
+                valeur = texte_wiki(brute[attributs.end():] if attributs else brute)
+                fusion = re.search(r'rowspan="(\d+)"', attributs.group(1)) if attributs else None
+                if fusion and int(fusion.group(1)) > 1:
+                    reports[col] = [valeur, int(fusion.group(1)) - 1]
+                cases.append(valeur)
+            col += 1
+        m = re.match(r"(?:\{\{dts\|)?(" + "|".join(MOIS_EN) + r") (\d{1,2})\b", cases[0]) if len(cases) >= 5 else None
+        if not m or not cases[1]:
+            continue
+        try:
+            iso = dt.date(annee, MOIS_EN.index(m.group(1)) + 1, int(m.group(2))).isoformat()
+        except ValueError:
+            continue
+        sorties.append({
+            "titre": cases[1], "iso": iso,
+            "plateformes": list(dict.fromkeys(PLATEFORMES.get(p.strip().upper(), p.strip()) for p in cases[2].split(",") if p.strip())),
+            "sorte": SORTES.get(cases[3].lower(), cases[3]), "genre": cases[4],
+            "genres": [g for g, mots in WIKI_GENRES.items() if any(x in cases[4].lower() for x in mots)],
+        })
+    return sorties
+
+
+def calendrier(aujourdhui, jeux, ancien, maintenant):
+    sorties = []
+    for annee in (aujourdhui.year, aujourdhui.year + 1):
+        try:
+            page = json.loads(get(WIKI + f"List_of_video_games_released_in_{annee}"))
+            sorties += lire_calendrier(page["parse"]["wikitext"]["*"], annee)
+        except Exception as e:
+            print(f"calendrier {annee} : ÉCHEC ({e!r})")
+    if not sorties:
+        return ancien.get("calendrier", [])   # Wikipédia en panne : on garde celui d'avant
+    simple = lambda s: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
+    steam = {simple(j["nom"]): i for i, j in jeux.items() if j.get("nom")}
+    deja = {(c["titre"], c["iso"]): c.get("vu", 0) for c in ancien.get("calendrier", [])}
+    limite = (aujourdhui - dt.timedelta(days=JOURS_CALENDRIER_PASSE)).isoformat()
+    garde = sorted((c for c in sorties if c["iso"] >= limite), key=lambda c: (c["iso"], c["titre"]))
+    for c in garde:
+        c["steam"] = steam.get(simple(c["titre"]))
+        # « vu » = quand cette date est apparue : sert à afficher et notifier les dates fraîchement annoncées
+        c["vu"] = deja.get((c["titre"], c["iso"]), maintenant if "calendrier" in ancien else 0)
+    return garde
+
+
+def date_fr(iso):
+    d = dt.date.fromisoformat(iso)
+    return f"{d.day} {MOIS_FR[d.month - 1]} {d.year}"
+
+
 def nom_court(nom):
     return re.sub(r"[™®©]", "", nom).strip()
 
@@ -207,7 +309,7 @@ def ranger_annonces(annonces, genres, jeux):
         for g in genres:
             connus = g["_connus"]
             trouves = [i for i in connus if parle_de(a["titre"], jeux[i]["nom"])]
-            mot = any(re.search(r"(?<!\w)" + re.escape(m) + r"(?!\w)", a["titre"], re.I) for m in GENRES[g["id"]]["mots"])
+            mot = any(parle_de(a["titre"], t) for t in g.get("_titres", [])) or any(re.search(r"(?<!\w)" + re.escape(m) + r"(?!\w)", a["titre"], re.I) for m in GENRES[g["id"]]["mots"])
             if trouves or mot:
                 a["genres"].append(g["id"])
                 a["jeux"] = sorted(set(a["jeux"]) | set(trouves))
@@ -265,6 +367,12 @@ def nouveautes(ancien, nouveau):
                 vus.add(("m", m["url"]))
                 notifs.append({"title": "Mise à jour : " + jeux[m["jeu"]]["nom"], "body": m["titre"],
                                "url": "#jeu/" + m["jeu"], "tag": "maj-" + m["jeu"]})
+    if "calendrier" in ancien:   # dates de sortie apparues à ce passage, pour les genres suivis
+        for c in nouveau.get("calendrier", []):
+            if c["vu"] == nouveau["maj"] and c["genres"]:
+                notifs.append({"title": "Date annoncée : " + c["titre"],
+                               "body": date_fr(c["iso"]) + " · " + ", ".join(c["plateformes"]),
+                               "url": "#jeu/" + c["steam"] if c.get("steam") else "", "tag": "date-" + c["titre"]})
     return notifs[:NOTIFS_MAX]
 
 
@@ -296,8 +404,14 @@ def principal(choisis):
     if not any(g["_connus"] for g in genres):
         sys.exit("Rien ramassé : Steam ne répond pas. Les anciennes données sont gardées.")
 
+    # Calendrier PC et consoles
+    cal = calendrier(aujourdhui, jeux, ancien, maintenant)
+    for g in genres:
+        g["_titres"] = [c["titre"] for c in cal if g["id"] in c["genres"]] if g["_connus"] else []
+    print(f"calendrier : {len(cal)} sorties datées, dont {sum(1 for c in cal if c['vu'] == maintenant)} nouvelles dates")
+
     # Mises à jour des jeux suivis
-    depuis, deja = maintenant - JOURS_MAJ * 86400, {}
+    depuis, deja =maintenant - JOURS_MAJ * 86400, {}
     for g in genres:
         if not g["_suivis"]:
             continue   # genre en panne : on garde ses mises à jour d'avant
@@ -315,7 +429,8 @@ def principal(choisis):
 
     # Fiches : celles d'avant sont reprises, on rafraîchit les plus vieilles
     affiches = list(dict.fromkeys([i for g in genres for cle in ("coeurs", "recentes", "pepites", "futures", "a_venir")
-                                   for i in g[cle]] + [m["jeu"] for g in genres for m in g["majs"]]))
+                                   for i in g[cle]] + [m["jeu"] for g in genres for m in g["majs"]]
+                                  + [c["steam"] for c in cal if c["steam"] and c["genres"]]))
     faites, panne = 0, False
     for i in affiches:
         details = {k: v for k, v in vieilles_fiches.get(i, {}).items() if k in CHAMPS_FICHE}
@@ -350,7 +465,7 @@ def principal(choisis):
     print(f"annonces : {len(annonces)} articles et vidéos")
 
     for g in genres:
-        del g["_suivis"], g["_connus"]
+        del g["_suivis"], g["_connus"], g["_titres"]
     # les genres non demandés (essai sur un seul genre) restent tels qu'ils étaient
     for vieux in ancien.get("genres", []):
         if vieux["id"] not in choisis:
@@ -359,7 +474,8 @@ def principal(choisis):
 
     utiles = {i for g in genres for cle in LISTES for i in g[cle]}
     utiles |= {m["jeu"] for g in genres for m in g["majs"]} | {i for a in annonces for i in a["jeux"]}
-    nouveau = {"maj": maintenant, "genres": genres, "annonces": annonces,
+    utiles |= {c["steam"] for c in cal if c["steam"]}
+    nouveau = {"maj": maintenant, "genres": genres, "annonces": annonces, "calendrier": cal,
                "jeux": {i: j for i, j in jeux.items() if i in utiles}}
     notifs = nouveautes(ancien, nouveau)
     DATA.parent.mkdir(exist_ok=True)
@@ -392,6 +508,22 @@ def verifie():
     n = nouveautes(avant, apres)
     assert [x["tag"] for x in n] == ["sortie-5", "sortie-9", "maj-7"], n
     assert n[0]["body"] == "Survie · 9€" and nouveautes({}, apres) == [] and nouveautes(apres, apres) == []
+    wiki = ('{| class="wikitable"\n! Release date\n! Title\n|-\n| October 1\n| \'\'[[Lien|Jeu Un]]\'\' (JP)\n| NS2, PS5\n| Port\n'
+            '| [[Survival horror]]\n| Studio\n| Editeur\n| <ref>x | y</ref>\n|-\n| {{dts|December 17}}\n| \'\'Jeu Deux\'\'\n'
+            '| rowspan="2" | WIN\n| rowspan="2" | Original\n| Soulslike\n| S\n| E\n| \n|-\n| December 18\n| \'\'Jeu Trois\'\'\n| MMORPG\n| S\n| E\n| \n'
+            '|-\n| December 19\n| \'\'{{sort|Route|The Route}}\'\'\n| PS5\n| Original\n| RPG\n| S\n| E\n|\n'
+            '|-\n| {{dts|November}}\n| \'\'Sans jour\'\'\n| WIN\n| Original\n| RPG\n| S\n| E\n|\n|}')
+    c = lire_calendrier(wiki, 2026)
+    assert [(x["titre"], x["iso"]) for x in c] == [("Jeu Un (JP)", "2026-10-01"), ("Jeu Deux", "2026-12-17"), ("Jeu Trois", "2026-12-18"),
+                                                    ("The Route", "2026-12-19")], c
+    assert c[0]["plateformes"] == ["Switch 2", "PS5"] and c[0]["sorte"] == "Portage" and c[0]["genres"] == ["survie", "horreur"]
+    assert c[2]["plateformes"] == ["PC"] and c[2]["sorte"] == "Nouveau jeu" and c[2]["genres"] == ["mmo"], c[2]
+    cal = [{"titre": "Neuf", "iso": "2027-03-12", "plateformes": ["PS5", "PC"], "genres": ["survie"], "vu": 50, "steam": None},
+           {"titre": "Hors genre", "iso": "2027-03-12", "plateformes": ["PS5"], "genres": [], "vu": 50, "steam": None},
+           {"titre": "Ancien", "iso": "2027-03-12", "plateformes": ["PS5"], "genres": ["survie"], "vu": 10, "steam": "5"}]
+    n = nouveautes({"genres": [], "calendrier": []}, {"maj": 50, "genres": [], "jeux": {}, "calendrier": cal})
+    assert n == [{"title": "Date annoncée : Neuf", "body": "12 mars 2027 · PS5, PC", "url": "", "tag": "date-Neuf"}], n
+    assert nouveautes({"genres": []}, {"maj": 50, "genres": [], "jeux": {}, "calendrier": cal}) == []
     print("Vérification : tout est bon.")
 
 
