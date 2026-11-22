@@ -319,20 +319,41 @@ def lire_igdb(lignes):
     return list(sorties.values())
 
 
-def igdb(maintenant):
-    """Sorties à venir sur PC et consoles d'après IGDB (base de jeux de Twitch). Liste vide sans les codes."""
+IGDB_CHAMPS = ("name,genres.name,themes.name,game_modes.name,keywords.name,cover.image_id,videos.video_id,videos.name,hypes,"
+               "summary,involved_companies.developer,involved_companies.publisher,involved_companies.company.name")
+
+
+def connexion_igdb():
+    """Ouvre la session IGDB. Rien sans les deux codes."""
     cles = cles_igdb()
     if not cles:
         print("IGDB : pas de codes, source sautée")
-        return []
+        return None
     jeton = poster("https://id.twitch.tv/oauth2/token?" + urllib.parse.urlencode(
         {"client_id": cles[0], "client_secret": cles[1], "grant_type": "client_credentials"}))["access_token"]
-    entetes = {"Client-ID": cles[0], "Authorization": "Bearer " + jeton, "Accept": "application/json"}
+    return {"Client-ID": cles[0], "Authorization": "Bearer " + jeton, "Accept": "application/json"}
+
+
+def igdb_par_noms(titres, entetes):
+    """Cherche dans IGDB la fiche de jeux précis, par leur nom exact (majuscules indifférentes). Rend {nom simplifié: fiche}."""
+    trouves = {}
+    for debut in range(0, len(titres), 40):
+        noms = [t.replace('"', "").replace("\\", "") for t in titres[debut:debut + 40]]
+        requete = f"fields {IGDB_CHAMPS}; where " + " | ".join(f'name ~ "{n}"' for n in noms) + "; limit 500;"
+        recu = poster("https://api.igdb.com/v4/games", requete.encode("utf-8"), entetes)
+        # plusieurs jeux peuvent porter le même nom (remakes) : on garde le plus suivi, puis celui qui a une jaquette
+        recu.sort(key=lambda g: (-(g.get("hypes") or 0), not g.get("cover")))
+        for b in lire_igdb([{"date": 0, "human": "Jan 01, 1970", "platform": None, "game": g} for g in recu]):
+            trouves.setdefault(simple_titre(b["titre"]), b)
+        time.sleep(0.4)
+    return trouves
+
+
+def igdb(maintenant, entetes):
+    """Sorties à venir sur PC et consoles d'après IGDB (base de jeux de Twitch)."""
     lignes = []
     for page in range(IGDB_PAGES):
-        requete = ("fields date,human,platform,game.name,game.genres.name,game.themes.name,game.game_modes.name,"
-                   "game.keywords.name,game.cover.image_id,game.videos.video_id,game.videos.name,game.hypes,game.summary,"
-                   "game.involved_companies.developer,game.involved_companies.publisher,game.involved_companies.company.name;"
+        requete = ("fields date,human,platform," + ",".join("game." + c for c in IGDB_CHAMPS.split(",")) + ";"
                    f" where date >= {maintenant - 86400} & date < {maintenant + 400 * 86400}"
                    f" & platform = ({','.join(map(str, IGDB_PLATEFORMES))}) & game.hypes >= {IGDB_ATTENTE_MIN};"
                    f" sort date asc; limit 500; offset {page * 500};")
@@ -344,22 +365,31 @@ def igdb(maintenant):
     return lire_igdb(lignes)
 
 
+def simple_titre(s):
+    """« Jeu Un: Remastered (JP) » -> « jeuunremastered », pour reconnaître un même jeu d'une source à l'autre."""
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
+
+
+def enrichir(c, b):
+    """Ajoute à une sortie Wikipédia ce qu'IGDB sait du jeu."""
+    c.update({k: b[k] for k in ("attente", "image", "video", "videos", "resume")})
+    c.update({k: b[k] for k in ("studio", "editeur") if not c.get(k)})
+    c["genres"] = list(dict.fromkeys(c["genres"] + b["genres"]))
+
+
 def fusionner(wiki, base):
     """Réunit Wikipédia et IGDB : un jeu présent des deux côtés garde la fiche Wikipédia, enrichie par IGDB."""
-    simple = lambda s: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
     par_titre = {}
     for c in wiki:
-        par_titre.setdefault(simple(c["titre"]), []).append(c)
+        par_titre.setdefault(simple_titre(c["titre"]), []).append(c)
     for b in base:
-        memes = par_titre.get(simple(b["titre"]))
+        memes = par_titre.get(simple_titre(b["titre"]))
         if not memes:
             wiki.append(b)
-            par_titre[simple(b["titre"])] = [b]
+            par_titre[simple_titre(b["titre"])] = [b]
             continue
         for c in memes:
-            c.update({k: b[k] for k in ("attente", "image", "video", "videos", "resume")})
-            c.update({k: b[k] for k in ("studio", "editeur") if not c.get(k)})
-            c["genres"] = list(dict.fromkeys(c["genres"] + b["genres"]))
+            enrichir(c, b)
     return wiki
 
 
@@ -371,21 +401,34 @@ def calendrier(aujourdhui, jeux, ancien, maintenant):
             sorties += lire_calendrier(page["parse"]["wikitext"]["*"], annee)
         except Exception as e:
             print(f"calendrier {annee} : ÉCHEC ({e!r})")
+    limite = (aujourdhui - dt.timedelta(days=JOURS_CALENDRIER_PASSE)).isoformat()
+    base, entetes = [], None
     try:
-        base = igdb(maintenant)
-        print(f"IGDB : {len(base)} sorties attendues")
+        entetes = connexion_igdb()
+        if entetes:
+            base = igdb(maintenant, entetes)
+            print(f"IGDB : {len(base)} sorties attendues")
     except Exception as e:
-        base = []
         print(f"IGDB : ÉCHEC ({e!r})")
     if not sorties and not base:
         return ancien.get("calendrier", [])   # tout est en panne : on garde le calendrier d'avant
     sorties = fusionner(sorties, base)
-    simple = lambda s: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", s).lower())
+    # les jeux de Wikipédia qu'IGDB n'a pas donnés d'office : on va chercher leur fiche par leur nom
+    sans_fiche = [c for c in sorties if c["iso"] >= limite and "resume" not in c]
+    if entetes and sans_fiche:
+        try:
+            fiches = igdb_par_noms(list(dict.fromkeys(re.sub(r"\s*\((?:JP|NA|EU|AS|WW|CN|KR)\)$", "", c["titre"]) for c in sans_fiche)), entetes)
+            for c in sans_fiche:
+                if simple_titre(c["titre"]) in fiches:
+                    enrichir(c, fiches[simple_titre(c["titre"])])
+            print(f"IGDB : {sum(1 for c in sans_fiche if 'resume' in c)} fiches trouvées par le nom sur {len(sans_fiche)} cherchées")
+        except Exception as e:
+            print(f"IGDB par le nom : ÉCHEC ({e!r})")
+    simple = simple_titre
     steam = {simple(j["nom"]): i for i, j in jeux.items() if j.get("nom")}
     avant = ancien.get("calendrier", [])
     deja = {(c["titre"], c["iso"]): c.get("vu", 0) for c in avant}
     igdb_deja_la = any(c.get("igdb") for c in avant)
-    limite = (aujourdhui - dt.timedelta(days=JOURS_CALENDRIER_PASSE)).isoformat()
     garde = sorted((c for c in sorties if c["iso"] >= limite), key=lambda c: (c["iso"], c["titre"]))
     for c in garde:
         c["steam"] = steam.get(simple(c["titre"]))
