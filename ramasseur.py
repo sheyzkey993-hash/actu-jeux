@@ -268,6 +268,7 @@ def lire_calendrier(wikitexte, annee):
             "plateformes": list(dict.fromkeys(PLATEFORMES.get(p.strip().upper(), p.strip()) for p in cases[2].split(",") if p.strip())),
             "sorte": SORTES.get(cases[3].lower(), cases[3]), "genre": cases[4],
             "genres": [g for g, mots in WIKI_GENRES.items() if any(x in cases[4].lower() for x in mots)],
+            "studio": cases[5] if len(cases) > 6 else "", "editeur": cases[6] if len(cases) > 6 else "",
         })
     return sorties
 
@@ -296,14 +297,21 @@ def lire_igdb(lignes):
             continue
         iso = dt.datetime.fromtimestamp(s["date"], dt.timezone.utc).date().isoformat()
         etiquettes = [x["name"].lower() for cle in ("genres", "themes", "game_modes", "keywords") for x in g.get(cle, [])]
+        societes = [x for x in g.get("involved_companies") or [] if isinstance(x, dict)]
         c = sorties.setdefault((g["id"], iso), {
             "titre": g["name"], "iso": iso, "plateformes": [], "sorte": "", "igdb": True,
             "genre": ", ".join(x["name"] for cle in ("genres", "themes") for x in g.get(cle, [])[:2]),
             "genres": [gid for gid, mots in IGDB_GENRES.items() if any(m == e or (m in e and len(e) < 40) for m in mots for e in etiquettes)],
             "attente": g.get("hypes") or 0,
             "image": f"https://images.igdb.com/igdb/image/upload/t_cover_big/{g['cover']['image_id']}.jpg" if g.get("cover") else None,
-            "video": (g.get("videos") or [{}])[-1].get("video_id"),
+            # les vidéos dont le nom contient « trailer » passent devant ; la première sert de trailer principal
+            "videos": [{"id": v["video_id"], "nom": v.get("name") or "Vidéo"} for v in
+                       sorted(g.get("videos") or [], key=lambda v: "trailer" not in (v.get("name") or "").lower()) if v.get("video_id")][:4],
+            "resume": g.get("summary") or "",
+            "studio": ", ".join(x["company"]["name"] for x in societes if x.get("developer") and x.get("company")),
+            "editeur": ", ".join(x["company"]["name"] for x in societes if x.get("publisher") and x.get("company")),
         })
+        c["video"] = c["videos"][0]["id"] if c["videos"] else None
         p = s.get("platform")   # un simple numéro, ou une fiche si la demande la détaille
         nom = IGDB_PLATEFORMES.get(p.get("id") if isinstance(p, dict) else p)
         if nom and nom not in c["plateformes"]:
@@ -323,7 +331,8 @@ def igdb(maintenant):
     lignes = []
     for page in range(IGDB_PAGES):
         requete = ("fields date,human,platform,game.name,game.genres.name,game.themes.name,game.game_modes.name,"
-                   "game.keywords.name,game.cover.image_id,game.videos.video_id,game.hypes;"
+                   "game.keywords.name,game.cover.image_id,game.videos.video_id,game.videos.name,game.hypes,game.summary,"
+                   "game.involved_companies.developer,game.involved_companies.publisher,game.involved_companies.company.name;"
                    f" where date >= {maintenant - 86400} & date < {maintenant + 400 * 86400}"
                    f" & platform = ({','.join(map(str, IGDB_PLATEFORMES))}) & game.hypes >= {IGDB_ATTENTE_MIN};"
                    f" sort date asc; limit 500; offset {page * 500};")
@@ -348,7 +357,8 @@ def fusionner(wiki, base):
             par_titre[simple(b["titre"])] = [b]
             continue
         for c in memes:
-            c.update({k: b[k] for k in ("attente", "image", "video")})
+            c.update({k: b[k] for k in ("attente", "image", "video", "videos", "resume")})
+            c.update({k: b[k] for k in ("studio", "editeur") if not c.get(k)})
             c["genres"] = list(dict.fromkeys(c["genres"] + b["genres"]))
     return wiki
 
@@ -625,7 +635,9 @@ def verifie():
     assert n == [{"title": "Date annoncée : Neuf", "body": "12 mars 2027 · PS5, PC", "url": "", "tag": "date-Neuf"}], n
     assert nouveautes({"genres": []}, {"maj": 50, "genres": [], "jeux": {}, "calendrier": cal}) == []
     jeu = {"id": 9, "name": "Jeu Deux", "hypes": 12, "themes": [{"name": "Horror"}], "game_modes": [{"name": "Co-operative"}],
-           "cover": {"image_id": "co1"}, "videos": [{"video_id": "abc"}]}
+           "cover": {"image_id": "co1"}, "videos": [{"video_id": "zzz", "name": "Gameplay"}, {"video_id": "abc", "name": "Launch Trailer"}],
+           "summary": "Résumé.", "involved_companies": [{"developer": True, "publisher": False, "company": {"name": "Studio X"}},
+                                                         {"developer": False, "publisher": True, "company": {"name": "Editeur Y"}}]}
     base = lire_igdb([{"date": 1797465600, "human": "Dec 17, 2026", "platform": {"id": 167}, "game": jeu},
                       {"date": 1797465600, "human": "Dec 17, 2026", "platform": 6, "game": jeu},
                       {"date": 1797465600, "human": "Q4 2026", "platform": {"id": 6}, "game": {"id": 8, "name": "Flou"}},
@@ -636,6 +648,8 @@ def verifie():
     deux = next(x for x in f if x["titre"] == "Jeu Deux")
     assert len(f) == 5 and deux["genres"] == ["soulslike", "horreur", "coop"] and deux["attente"] == 12 and "igdb" not in deux
     assert deux["plateformes"] == ["PC"] and f[-1]["titre"] == "Seul" and f[-1]["igdb"]
+    assert base[0]["studio"] == "Studio X" and base[0]["editeur"] == "Editeur Y" and [v["id"] for v in base[0]["videos"]] == ["abc", "zzz"]
+    assert deux["resume"] == "Résumé." and deux["studio"] == "S" and c[0]["studio"] == "Studio" and c[0]["editeur"] == "Editeur"
     print("Vérification : tout est bon.")
 
 

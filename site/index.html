@@ -61,6 +61,8 @@
             padding:calc(10px + env(safe-area-inset-top)) 0 10px; }
   .retour button { padding:10px 16px 10px 12px; border-radius:999px; background:var(--carte); border:1px solid var(--bord); }
   .affiche { width:100%; border-radius:16px; aspect-ratio:460/215; object-fit:cover; background:var(--carte); }
+  .affiche.portrait { width:160px; aspect-ratio:3/4; display:block; }
+  iframe.yt { width:100%; aspect-ratio:16/9; border:0; border-radius:14px; background:#000; }
   .fiche h1 { font-size:24px; margin:14px 0 6px; overflow-wrap:anywhere; }
   .faits { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:14px 0; }
   .fait { background:var(--carte); border:1px solid var(--bord); border-radius:14px; padding:10px 12px; min-width:0; }
@@ -123,14 +125,44 @@ function carteJeu(id, extra) {
 // une sortie du calendrier (PC et consoles) : ouvre la fiche si le jeu est sur Steam, sinon ses trailers sur YouTube
 function carteCal(c) {
   const j = c.steam && D.jeux[c.steam];
-  const youtube = /^[\w-]{6,20}$/.test(c.video || "") ? "https://www.youtube.com/watch?v=" + c.video
-    : "https://www.youtube.com/results?search_query=" + encodeURIComponent(c.titre + " trailer");
-  const cible = j ? `href="#jeu/${esc(c.steam)}"` : `href="${youtube}" target="_blank" rel="noopener"`;
+  const cible = j ? `href="#jeu/${esc(c.steam)}"` : `href="#cal/${encodeURIComponent(c.titre + "|" + c.iso)}"`;
   const vignette = j ? image(j) : lien(c.image);
   return `<a class="carte" ${cible}>${vignette !== "#" ? `<img class="${j ? "" : "jaquette"}" src="${vignette}" alt="" loading="lazy">` : ""}
     <div class="t"><div class="nom">${esc(c.titre)}</div>
     <div class="sous"><span class="or">${jour(c.iso)}</span> · ${esc(c.plateformes.join(", "))}</div>
-    <div class="sous">${esc([c.sorte, c.genre].filter(Boolean).join(" · "))}${j ? "" : (c.video ? " · trailer ↗" : " · trailers ↗")}</div></div></a>`;
+    <div class="sous">${esc([c.sorte, c.genre].filter(Boolean).join(" · "))}</div></div></a>`;
+}
+
+// fiche d'un jeu du calendrier absent de Steam (jeux console surtout) : infos d'IGDB et de Wikipédia
+function ficheCal(cle) {
+  const c = D && (D.calendrier || []).find(x => x.titre + "|" + x.iso === cle);
+  if (!c) { $("fiche").hidden = true; return; }
+  const fait = (nom, v) => v ? `<div class="fait"><small>${nom}</small><b>${esc(v)}</b></div>` : "";
+  const videos = (c.videos || []).filter(v => /^[\w-]{6,20}$/.test(v.id));
+  const recherche = "https://www.youtube.com/results?search_query=" + encodeURIComponent(c.titre + " trailer");
+  const nom = simple(c.titre);
+  const actus = nom.length >= 4 ? D.annonces.filter(a => simple(a.titre).includes(nom)) : [];
+  $("fiche").innerHTML = `<div class="page fiche">
+    <div class="retour"><button id="retour">‹ Retour</button></div>
+    ${lien(c.image) !== "#" ? `<img class="affiche portrait" src="${lien(c.image)}" alt="">` : ""}
+    <h1>${esc(c.titre)}</h1>
+    <div class="sous">${esc(c.resume || "")}</div>
+    <div class="faits">
+      ${fait(c.iso >= new Date().toLocaleDateString("sv") ? "Sortie prévue" : "Date de sortie", jour(c.iso))}
+      ${fait("Jouable sur", c.plateformes.join(", "))}
+      ${fait("Type de jeu", [...new Set([...D.genres.filter(g => c.genres.includes(g.id)).map(g => g.nom), c.genre])].filter(Boolean).join(", "))}
+      ${fait("Nature", c.sorte)}
+      ${fait("Studio", c.studio)}
+      ${fait("Éditeur", c.editeur !== c.studio ? c.editeur : "")}    </div>
+    <div class="boutons"><a class="bouton plein" href="${recherche}" target="_blank" rel="noopener">Trailers sur YouTube</a></div>
+    ${videos.length ? `<h2>Trailer</h2><iframe class="yt" src="https://www.youtube-nocookie.com/embed/${videos[0].id}" title="${esc(videos[0].nom)}"
+      loading="lazy" allowfullscreen allow="encrypted-media; picture-in-picture; fullscreen"></iframe>` : ""}
+    ${videos.length > 1 ? `<div class="boutons">${videos.slice(1).map(v => `<a class="bouton" href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">▶ ${esc(v.nom)}</a>`).join("")}</div>` : ""}
+    ${actus.length ? "<h2>Articles et vidéos récents</h2>" + actus.map(carteAnnonce).join("") : ""}
+    <p class="credit">Ce jeu n'est pas dans les listes Steam de l'appli : pas de prix ni d'avis ici. Infos : ${c.resume || c.image ? "IGDB" : "Wikipédia"}${c.resume ? " (résumé en anglais)" : ""}.</p>
+  </div>`;
+  $("fiche").hidden = false;
+  $("fiche").scrollTop = 0;
 }
 const depliant = (titre, html) => `<details><summary>${titre}</summary>${html}</details>`;
 const bloc = (titre, html, vide) => `<h2>${titre}</h2>` + (html || `<p class="vide">${vide}</p>`);
@@ -232,10 +264,12 @@ function fiche(id) {
 }
 
 function route() {
-  const m = location.hash.match(/^#jeu\/(\d+)$/);
+  const m = location.hash.match(/^#jeu\/(\d+)$/), k = location.hash.match(/^#cal\/(.+)$/);
   $("notifs").hidden = location.hash !== "#notifs";
-  if (m) fiche(m[1]); else { $("fiche").hidden = true; $("fiche").innerHTML = ""; }
-  document.body.style.overflow = m || location.hash === "#notifs" ? "hidden" : "";
+  let cle = "";
+  try { cle = k ? decodeURIComponent(k[1]) : ""; } catch {}
+  if (m) fiche(m[1]); else if (cle) ficheCal(cle); else { $("fiche").hidden = true; $("fiche").innerHTML = ""; }
+  document.body.style.overflow = m || cle || location.hash === "#notifs" ? "hidden" : "";
 }
 
 document.addEventListener("click", e => {
