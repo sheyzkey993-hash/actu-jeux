@@ -52,7 +52,8 @@
   details[open] summary::after { content:" ▴"; }
   #rubriques { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; background:rgba(15,17,21,.94);
                backdrop-filter:blur(12px); border-top:1px solid var(--bord); padding-bottom:env(safe-area-inset-bottom); }
-  #rubriques button { flex:1; max-width:180px; padding:10px 2px 12px; color:var(--doux); font-size:12px; }
+  #rubriques { align-items:flex-start; }
+  #rubriques button { flex:1; min-width:0; max-width:160px; padding:10px 2px 10px; color:var(--doux); font-size:11px; line-height:1.15; }
   #rubriques button span { display:block; font-size:20px; margin-bottom:2px; }
   #rubriques button[aria-pressed=true] { color:var(--or); }
   .feuille { position:fixed; inset:0; background:var(--fond); overflow-y:auto; z-index:5; padding-bottom:calc(32px + env(safe-area-inset-bottom)); }
@@ -91,7 +92,7 @@
 <script>
 // Clé publique des notifications (la clé privée, elle, reste dans les secrets GitHub).
 const CLE_PUBLIQUE = "BJ7YgQ1VwXvR47uxd9p1c6bX9iYUnAO8tZ9krfUWy_IMhT163U6yCqo39-KjvV7T_xmPFUhsUuHPiVPmheFjIhM";
-const RUBRIQUES = [["sorties", "📅", "Sorties"], ["pepites", "💎", "Pépites"], ["majs", "🛠️", "Mises à jour"], ["annonces", "📣", "Annonces"]];
+const RUBRIQUES = [["sorties", "📅", "Sorties Steam"], ["calendrier", "🎮", "Sorties PC et consoles"],["pepites", "💎", "Pépites"], ["majs", "🛠️", "Mises à jour"], ["annonces", "📣", "Annonces"]];
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const lien = u => /^https:\/\//.test(u || "") ? esc(u) : "#";
@@ -164,11 +165,12 @@ function afficher() {
     h = bloc(trouves.length + consoles.length + (trouves.length + consoles.length > 1 ? " jeux trouvés" : " jeu trouvé"), cartes(trouves) + consoles.map(carteCal).join(""),
       "Aucun jeu de ce nom dans l'appli. Elle ne connaît que les jeux de ses rubriques, pas tout le catalogue Steam.");
   } else if (rubrique === "sorties") {
-    h = bloc("Calendrier · PC et consoles", cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
-      + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a> (licence CC BY-SA) et <a href="https://www.igdb.com" target="_blank" rel="noopener">IGDB</a>.</p>`
-      + depliant(`Tout le calendrier, tous genres (${cal.length})`, cal.map(carteCal).join(""))
-      + bloc("À venir sur Steam", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
+    h = bloc("À venir sur Steam", cartes(g.a_venir), "Aucune sortie datée pour l'instant.")
       + bloc("Sorties récentes sur Steam (30 jours)", cartes(g.recentes), "Aucune sortie marquante ce mois-ci.");
+  } else if (rubrique === "calendrier") {
+    h = bloc("Calendrier · PC et consoles",cal.filter(c => c.genres.includes(genre)).map(carteCal).join(""), "Aucune sortie datée dans ce genre pour l'instant.")
+      + `<p class="credit">Calendrier : <a href="https://en.wikipedia.org/wiki/List_of_video_games_released_in_${new Date().getFullYear()}" target="_blank" rel="noopener">Wikipédia</a> (licence CC BY-SA) et <a href="https://www.igdb.com" target="_blank" rel="noopener">IGDB</a>.</p>`
+      + depliant(`Tout le calendrier, tous genres (${cal.length})`, cal.map(carteCal).join(""));
   } else if (rubrique === "pepites") {
     h = (g.coeurs.length ? bloc("Coups de cœur de Kouma", cartes(g.coeurs)) : "")
       + bloc("Pépites du moment", cartes(g.pepites), "Aucune pépite trouvée.")
